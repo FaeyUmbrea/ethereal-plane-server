@@ -1,17 +1,20 @@
 import { OAuth2Client } from "https://deno.land/x/oauth2_client@v1.0.0/mod.ts";
+import { Routes, InternalRoutes } from "https://deno.land/x/rutt@0.0.14/mod.ts";
+import { ChatHandler } from "./chat/ChatHandler.ts";
+import { LoginHandler } from "./login/LoginHandler.ts";
 
 const api = "https://www.googleapis.com/youtube/v3/"
 
-export class YouTube {
+export class YouTube implements ChatHandler, LoginHandler {
     refreshToken: string;
     accessToken: string;
     auth: OAuth2Client;
     nextPageToken = "";
-    waitInterval = 0; 
-    listenerThread: number|undefined;
-    messageHandlers: ((user: string,message:string) => void|Promise<void>)[]=[];
+    waitInterval = 0;
+    listenerThread: number | undefined;
+    messageHandlers: ((user: string, message: string) => void | Promise<void>)[] = [];
     liveChatId = "";
-    constructor(env: Record<string,string>) {
+    constructor(env: Record<string, string>) {
         this.refreshToken = "";
         this.accessToken = "";
         this.auth = new OAuth2Client({
@@ -22,47 +25,98 @@ export class YouTube {
             redirectUri: env["YOUTUBE_REDIRECT_URL"],
             defaults: {
                 scope: "https://www.googleapis.com/auth/youtube.force-ssl",
-                requestOptions:{
-                    urlParams:{
+                requestOptions: {
+                    urlParams: {
                         "access_type": "offline"
                     }
                 }
             }
         })
     }
-
-    async getAuthURL(){
-        return (await this.auth.code.getAuthorizationUri({disablePkce: true})).uri.href
+    removeMessageHandler(handler: (user: string, message: string) => void | Promise<void>): void | Promise<void> {
+        this.messageHandlers = this.messageHandlers.filter((e) => e != handler)
+        //If there is no more hanldlers, stop chat listener to save resources
+        if (this.messageHandlers.length == 0) {
+            this.stop();
+        }
     }
 
-    async code(url: string){
+    async getLivechatIDfromVideoID(videoID: string) {
+        const res = await this.videosList({
+            part: "liveStreamingDetails",
+            id: videoID
+        })
+        if (res && res.items && res.items[0].liveStreamingDetails?.activeLiveChatId) {
+            return res.items[0].liveStreamingDetails.activeLiveChatId;
+        }
+
+        throw new Error("No Live Chat Found with Video URL");
+    }
+
+    async connect(env: Record<string, string>): Promise<void> {
+        if (!env["YOUTUBE_REFRESH_TOKEN"]) {
+            console.log((await this.getAuthURL()));
+        }
+        else {
+            this.authenticate(env["YOUTUBE_REFRESH_TOKEN"])
+            const liveChatID = await this.getLivechatIDfromVideoID(env["YOUTUBE_VIDEO_ID"])
+            this.setLiveChatId(liveChatID);
+            console.log("Youtube chat loaded!")
+        }
+    }
+
+    disconnect(): void | Promise<void> {
+        return;
+    }
+    getRoute(env: Record<string, string>): Routes<unknown> | InternalRoutes<unknown> {
+        return {
+            "/youtube/oauthcallback": async (req: Request) => {
+                await this.code(req.url);
+                if (env["YOUTUBE_STORE_REFRESH_TOKEN"] && this.getRefreshToken() != "") {
+                    const text = await Deno.readTextFile("./.env");
+                    const newText = text.replace(/^.*YOUTUBE_REFRESH_TOKEN=*$/mg, "") + `\nYOUTUBE_REFRESH_TOKEN=${this.getRefreshToken()}`;
+                    Deno.writeTextFile("./.env", newText);
+                }
+                const liveChatID = await this.getLivechatIDfromVideoID(env["YOUTUBE_VIDEO_ID"])
+                this.setLiveChatId(liveChatID);
+                console.log("Youtube chat loaded!")
+                return new Response("You can now close this tab", { status: 200 });
+            }
+        }
+    }
+
+    async getAuthURL() {
+        return (await this.auth.code.getAuthorizationUri({ disablePkce: true })).uri.href
+    }
+
+    async code(url: string) {
         const tokens = (await this.auth.code.getToken(url))
         this.accessToken = tokens.accessToken;
         console.log(tokens);
-        if(tokens.refreshToken)
-        this.refreshToken = tokens.refreshToken;
+        if (tokens.refreshToken)
+            this.refreshToken = tokens.refreshToken;
     }
 
-    getRefreshToken(){
+    getRefreshToken() {
         return this.refreshToken;
     }
 
-    async authenticate(refreshToken: string | undefined = undefined){
-        if(refreshToken){
+    async authenticate(refreshToken: string | undefined = undefined) {
+        if (refreshToken) {
             const tokens = await this.auth.refreshToken.refresh(refreshToken);
             this.accessToken = tokens.accessToken;
-            if(tokens.refreshToken)
-            this.refreshToken = tokens.refreshToken;
+            if (tokens.refreshToken)
+                this.refreshToken = tokens.refreshToken;
         }
         else {
             const tokens = await this.auth.refreshToken.refresh(this.refreshToken);
             this.accessToken = tokens.accessToken;
-            if(tokens.refreshToken)
-            this.refreshToken = tokens.refreshToken;
+            if (tokens.refreshToken)
+                this.refreshToken = tokens.refreshToken;
         }
     }
 
-    send(message: string){
+    sendMessage(message: string) {
         this.liveMessagesInsert({
             snippet: {
                 liveChatId: this.liveChatId,
@@ -92,7 +146,7 @@ export class YouTube {
         throw new Error(await res.text());
     }
 
-    async videosList(query: videosListQuery){
+    async videosList(query: videosListQuery) {
         const url = buildURL("videos", query);
 
         const opt: RequestInit = {
@@ -102,13 +156,13 @@ export class YouTube {
         }
 
         const res = await fetch(url, opt);
-        if(res.ok){
+        if (res.ok) {
             return (await res.json()) as VideoList
         }
     }
 
-    async chatMessagesList(query: liveChatMessagesListQuery){
-        const url = buildURL("liveChat/messages",query);
+    async chatMessagesList(query: liveChatMessagesListQuery) {
+        const url = buildURL("liveChat/messages", query);
 
         const opt: RequestInit = {
             headers: {
@@ -116,19 +170,19 @@ export class YouTube {
             }
         }
 
-        const res = await fetch(url,opt);
-        if(res.ok){
+        const res = await fetch(url, opt);
+        if (res.ok) {
             return (await res.json()) as LiveChatMessageList
         }
     }
 
-    async getMessages(){
-        if(this.waitInterval == 0 && this.nextPageToken == ""){
+    async getMessages() {
+        if (this.waitInterval == 0 && this.nextPageToken == "") {
             const res = await this.chatMessagesList({
                 part: "snippet",
                 liveChatId: this.liveChatId
             });
-            if(res){
+            if (res) {
                 this.waitInterval = res.pollingIntervalMillis;
                 this.nextPageToken = res.nextPageToken;
                 //discard previous chat
@@ -141,53 +195,44 @@ export class YouTube {
                 liveChatId: this.liveChatId,
                 pageToken: this.nextPageToken
             });
-            if(res){
+            if (res) {
                 this.waitInterval = res.pollingIntervalMillis;
                 this.nextPageToken = res.nextPageToken;
                 this.processMessages(res.items);
             }
         }
-        if(this.listenerThread){
-            this.listenerThread = setTimeout(() => this.getMessages(),this.waitInterval);
+        if (this.listenerThread) {
+            this.listenerThread = setTimeout(() => this.getMessages(), this.waitInterval);
         }
     }
 
-    processMessages(messages:ChatMessage[]){
+    processMessages(messages: ChatMessage[]) {
         messages.forEach((message) => {
-            if(message.snippet.type == "textMessageEvent")
-            this.messageHandlers.forEach((handler) => handler(message.snippet.authorChannelId,message.snippet.textMessageDetails.messageText))
+            if (message.snippet.type == "textMessageEvent")
+                this.messageHandlers.forEach((handler) => handler(message.snippet.authorChannelId, message.snippet.textMessageDetails.messageText))
         })
     }
 
-    start(){
-        if(!this.listenerThread){
-            this.listenerThread = setTimeout(() => this.getMessages(),0);
+    start() {
+        if (!this.listenerThread) {
+            this.listenerThread = setTimeout(() => this.getMessages(), 0);
         }
     }
 
-    stop(){
-        if(this.listenerThread){
+    stop() {
+        if (this.listenerThread) {
             clearTimeout(this.listenerThread);
         }
     }
 
-    addMessageHandler(handler: ((user: string,message:string) => void|Promise<void>)){
+    addMessageHandler(handler: ((user: string, message: string) => void | Promise<void>)) {
         //start automatically if a handler is added
-        if(!this.listenerThread){
+        if (!this.listenerThread) {
             this.start();
         }
         this.messageHandlers.push(handler);
     }
-
-    removeMessageHanlder(handler: ((user: string,message:string) => void|Promise<void>)){
-        this.messageHandlers = this.messageHandlers.filter((e) => e != handler)
-        //If there is no more hanldlers, stop chat listener to save resources
-        if(this.messageHandlers.length == 0){
-            this.stop();
-        }
-    }
-
-    setLiveChatId(liveChatId: string){
+    setLiveChatId(liveChatId: string) {
         this.liveChatId = liveChatId;
     }
 }
@@ -209,7 +254,7 @@ interface query {
     [key: string]: any;
 }
 
-interface liveChatMessagesListQuery extends query{
+interface liveChatMessagesListQuery extends query {
     liveChatId: string;
     part: string;
     hl?: string;
@@ -218,7 +263,7 @@ interface liveChatMessagesListQuery extends query{
     profileImageSize?: number;
 }
 
-interface videosListQuery extends query{
+interface videosListQuery extends query {
     part: string;
     chart?: string;
     id?: string;
