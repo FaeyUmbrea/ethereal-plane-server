@@ -50,13 +50,13 @@ io.on("connection", (socket) => {
         },time)
         poll.changeCallback = ()=>{
             const tally = poll.tally();
-            socket.emit("poll",Array.from(tally),id);
+            io.emit("poll",Array.from(tally),id);
         }
     })
     socket.on("getPoll",(id)=>{
         const poll = polls.get(id);
         if(poll)
-        socket.emit("poll",poll.tally(),id);
+        io.emit("poll",Array.from(poll.tally()),id);
     })
     socket.on("startChat",()=>{
         chatHandlers.forEach((handler)=>handler.addMessageHandler(messageProcess))
