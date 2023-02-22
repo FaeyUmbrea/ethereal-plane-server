@@ -47,6 +47,7 @@ io.on("connection", (socket) => {
         chatHandlers.forEach((handler)=>handler.addMessageHandler(msghandler))
         setTimeout(()=>{
             chatHandlers.forEach((handler)=>handler.removeMessageHandler(msghandler))
+            io.emit("poll",Array.from(poll.tally()),id);
         },time)
         poll.changeCallback = ()=>{
             const tally = poll.tally();
