@@ -34,10 +34,11 @@ export class Poll {
 
     tally(){
         const tally = new Map<string,number>(this.options.map((obj) => [obj,0]));
-        this.votes.forEach((_val,key) =>{
-            const prev = tally.get(key)
-            if(prev)
-            tally.set(key,prev+1)
+        this.votes.forEach((val) =>{
+            const prev = tally.get(val)
+            if(prev!=undefined)
+            tally.set(val,prev+1)
         })
+        return tally
     }    
 }
