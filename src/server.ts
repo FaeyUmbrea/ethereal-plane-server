@@ -56,10 +56,12 @@ io.on("connection", (socket) => {
     })
     socket.on("getPoll",(id)=>{
         const poll = polls.get(id);
-        if(poll)
+        if(poll) {
         io.emit("poll",Array.from(poll.tally()),id);
-        else 
+        }
+        else {
         io.emit("noPoll",id);
+        }
     })
     socket.on("startChat",()=>{
         chatHandlers.forEach((handler)=>handler.addMessageHandler(messageProcess))
