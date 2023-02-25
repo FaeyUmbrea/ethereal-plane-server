@@ -11,7 +11,7 @@ export class Poll {
         this.changeCallback = changeCallback;
     }
 
-    processChat(sender:string,message:string) {
+    processChat = (sender:string,message:string) => {
         if(this.prefix != ""){
             if(message.startsWith(this.prefix)){
                 const parts = message.split("")

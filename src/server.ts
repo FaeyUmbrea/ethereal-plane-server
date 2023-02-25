@@ -43,11 +43,11 @@ io.on("connection", (socket) => {
     socket.on("createPoll", (options,time,id) => {
         const poll = new Poll(options);
         polls.set(id,poll);
-        const msghandler = (user:string,message:string) => {poll.processChat(user,message)}
-        chatHandlers.forEach((handler)=>handler.addMessageHandler(msghandler))
+        chatHandlers.forEach((handler)=>handler.addMessageHandler(poll.processChat))
         setTimeout(()=>{
-            chatHandlers.forEach((handler)=>handler.removeMessageHandler(msghandler))
+            chatHandlers.forEach((handler)=>handler.removeMessageHandler(poll.processChat))
             io.emit("poll",Array.from(poll.tally()),id);
+
         },time)
         poll.changeCallback = ()=>{
             const tally = poll.tally();
