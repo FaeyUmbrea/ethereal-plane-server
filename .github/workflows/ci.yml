@@ -28,4 +28,4 @@ jobs:
         id: create_version_release
         uses: ncipollo/release-action@v1
         with:
-            artifacts: './server-linux, ./server.exe, ./server-macos-aarch64, ./server-macos-x86'
+            artifacts: './server-linux, ./server.exe, ./server-macos-aarch64, ./server-macos-x86, ./.env.example'
