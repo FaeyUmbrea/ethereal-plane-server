@@ -22,7 +22,7 @@ export class YouTube implements ChatHandler, LoginHandler {
             clientSecret: env["YOUTUBE_CLIENT_SECRET"],
             authorizationEndpointUri: "https://accounts.google.com/o/oauth2/v2/auth",
             tokenUri: "https://oauth2.googleapis.com/token",
-            redirectUri: env["YOUTUBE_REDIRECT_URL"],
+            redirectUri: env["YOUTUBE_REDIRECT_URL"] ? env["YOUTUBE_REDIRECT_URL"] : "http://localhost:3000/youtube/oauthcallback",
             defaults: {
                 scope: "https://www.googleapis.com/auth/youtube.force-ssl",
                 requestOptions: {
