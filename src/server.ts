@@ -8,7 +8,7 @@ import { ChatHandler } from "./chat/ChatHandler.ts";
 import { Twitch } from "./twitch.ts";
 import { LoginHandler } from "./login/LoginHandler.ts";
 
-const env = await load();
+const env = await load({defaultsPath:"",examplePath:""});
 
 
 const io = new Server({ cors: { allowedHeaders: "*" } });

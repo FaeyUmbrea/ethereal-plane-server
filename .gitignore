@@ -1,3 +1,5 @@
-server
+server-linux
+server-macos-x86
+server-macos-aarch
 server.exe
 .env
