@@ -10,7 +10,7 @@ jobs:
     steps:
 
       - uses: actions/checkout@v3.3.0
-      - uses: teaxyz/setup@v0.15.0
+      - uses: teaxyz/setup@v0
       - name: Build Windows
         run: tea xc build:windows
       - name: Build Linux

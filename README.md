@@ -9,7 +9,6 @@ As such only deno and xc are required.
 | Project   | Version  |
 |-----------|----------|
 | deno.land | ^1.31.1  |
-| xc        | *        |
 
 ## Tasks
 
