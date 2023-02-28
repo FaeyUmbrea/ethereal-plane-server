@@ -33,7 +33,7 @@ deno compile --allow-net --allow-env --allow-read=.env --allow-write=.env --targ
 
 ### build:macos
 ```
-deno compile --allow-net --allow-env --allow-read=.env --allow-write=.env --target aarch64-apple-darwin ./src/server.ts server-macos-aarch64
+deno compile --allow-net --allow-env --allow-read=.env --allow-write=.env --target aarch64-apple-darwin --output server-macos-aarch64 ./src/server.ts 
 ```
 
 
