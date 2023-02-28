@@ -1,0 +1,31 @@
+name: Release Creation
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3.3.0
+      - uses: teaxyz/setup@v0
+      - name: Build Windows
+        run: tea xc build:windows
+      - name: Build Linux
+        run: tea xc build:linux
+      - name: Build MacOS x86
+        run: tea xc build:macos86
+      - name: Build MacOS aarch64
+        run: tea xc build:macos
+      - name: Update Release with Files
+        id: create_version_release
+        uses: ncipollo/release-action@v1
+        with:
+            artifacts: './server-linux, ./server.exe, ./server-macos-aarch64, ./server-macos-x86'
