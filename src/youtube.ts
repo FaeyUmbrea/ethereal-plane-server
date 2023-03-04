@@ -1,7 +1,7 @@
-import { OAuth2Client } from "https://deno.land/x/oauth2_client@v1.0.0/mod.ts";
-import { Routes, InternalRoutes } from "https://deno.land/x/rutt@0.0.14/mod.ts";
-import { ChatHandler } from "./chat/ChatHandler.ts";
-import { LoginHandler } from "./login/LoginHandler.ts";
+import {OAuth2Client} from "https://deno.land/x/oauth2_client@v1.0.0/mod.ts";
+import {InternalRoutes, Routes} from "https://deno.land/x/rutt@0.0.14/mod.ts";
+import {ChatHandler} from "./chat/ChatHandler.ts";
+import {LoginHandler} from "./login/LoginHandler.ts";
 
 const api = "https://www.googleapis.com/youtube/v3/"
 
@@ -14,6 +14,7 @@ export class YouTube implements ChatHandler, LoginHandler {
     listenerThread: number | undefined;
     messageHandlers: ((user: string, message: string) => void | Promise<void>)[] = [];
     liveChatId = "";
+    private userIDs = new Map<string, string>();
     constructor(env: Record<string, string>) {
         this.refreshToken = "";
         this.accessToken = "";
@@ -56,18 +57,40 @@ export class YouTube implements ChatHandler, LoginHandler {
     async connect(env: Record<string, string>): Promise<void> {
         if (!env["YOUTUBE_REFRESH_TOKEN"]) {
             console.log((await this.getAuthURL()));
-        }
-        else {
-            this.authenticate(env["YOUTUBE_REFRESH_TOKEN"])
+        } else {
+            await this.authenticate(env["YOUTUBE_REFRESH_TOKEN"])
             const liveChatID = await this.getLivechatIDfromVideoID(env["YOUTUBE_VIDEO_ID"])
             this.setLiveChatId(liveChatID);
             console.log("Youtube chat loaded!")
         }
     }
 
+    async getUserNameFromID(userID: string) {
+        if (this.userIDs.get(userID)) {
+            return this.userIDs.get(userID)
+        }
+        const channels = await this.channelsList({part: "snippet", id: userID})
+        if (channels) {
+            const channel = channels.items[0]
+            if (channel) {
+                const url = channel.snippet?.customUrl;
+                const title = channel.snippet?.title;
+                if (url) {
+                    this.userIDs.set(userID, url);
+                    return url;
+                } else if (title) {
+                    this.userIDs.set(userID, title);
+                    return title;
+                }
+            }
+        }
+        throw new Error("You should not be here");
+    }
+
     disconnect(): void | Promise<void> {
         return;
     }
+
     getRoute(env: Record<string, string>): Routes<unknown> | InternalRoutes<unknown> {
         return {
             "/youtube/oauthcallback": async (req: Request) => {
@@ -176,6 +199,21 @@ export class YouTube implements ChatHandler, LoginHandler {
         }
     }
 
+    async channelsList(query: channelsListQuery) {
+        const url = buildURL("channels", query);
+
+        const opt: RequestInit = {
+            headers: {
+                "Authorization": `Bearer ${this.accessToken}`
+            }
+        }
+
+        const res = await fetch(url, opt);
+        if (res.ok) {
+            return (await res.json()) as ChannelsList
+        }
+    }
+
     async getMessages() {
         if (this.waitInterval == 0 && this.nextPageToken == "") {
             const res = await this.chatMessagesList({
@@ -206,10 +244,10 @@ export class YouTube implements ChatHandler, LoginHandler {
         }
     }
 
-    processMessages(messages: ChatMessage[]) {
+    async processMessages(messages: ChatMessage[]) {
         messages.forEach((message) => {
             if (message.snippet.type == "textMessageEvent")
-                this.messageHandlers.forEach((handler) => handler(message.snippet.authorChannelId, message.snippet.textMessageDetails.messageText))
+                this.messageHandlers.forEach(async (handler) => handler((await this.getUserNameFromID(message.snippet.authorChannelId)) as string, message.snippet.textMessageDetails.messageText))
         })
     }
 
@@ -278,6 +316,19 @@ interface videosListQuery extends query {
     videoCategoryId?: string;
 }
 
+interface channelsListQuery extends query {
+    part: string;
+    categoryId?: string;
+    forUsername?: string;
+    id: string;
+    managedByMe?: boolean;
+    mine?: boolean;
+    hl?: string;
+    maxResults?: number;
+    onBehalfOfContentOwner?: string;
+    pageToken?: string;
+}
+
 interface VideoList {
     kind: "youtube#videoListResponse";
     etag: string;
@@ -332,5 +383,29 @@ interface ChatMessage {
         textMessageDetails: {
             messageText: string;
         }
+    }
+}
+
+interface ChannelsList {
+    kind: "youtube#channelListRespone";
+    etag: string;
+    nextPageToken: string;
+    prevPageToken: string;
+    pageInfo: {
+        totalResults: number;
+        resultsPerPage: number;
+    }
+    items: Channel[]
+}
+
+interface Channel {
+    kind: "youtube#channel";
+    etag: string;
+    id: string;
+    snippet?: {
+        title: string;
+        description: string;
+        customUrl?: string;
+        publishedAt: string;
     }
 }
