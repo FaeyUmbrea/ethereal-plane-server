@@ -1,22 +1,24 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { Server } from "https://deno.land/x/socket_io@0.2.0/mod.ts";
-import { router } from "https://deno.land/x/rutt@0.0.14/mod.ts";
-import { load } from "https://deno.land/std@0.177.0/dotenv/mod.ts";
-import { YouTube } from './youtube.ts';
-import { Poll } from "./polls.ts";
-import { ChatHandler } from "./chat/ChatHandler.ts";
-import { Twitch } from "./twitch.ts";
-import { LoginHandler } from "./login/LoginHandler.ts";
+import {serve} from "https://deno.land/std@0.177.0/http/server.ts";
+import {Server} from "https://deno.land/x/socket_io@0.2.0/mod.ts";
+import {router} from "https://deno.land/x/rutt@0.0.14/mod.ts";
+import {load} from "https://deno.land/std@0.177.0/dotenv/mod.ts";
+import {YouTube} from './youtube.ts';
+import {Poll} from "./polls.ts";
+import {ChatHandler} from "./chat/ChatHandler.ts";
+import {Twitch} from "./twitch.ts";
+import {LoginHandler} from "./login/LoginHandler.ts";
 
-const env = await load({defaultsPath:"",examplePath:""});
+const env = await load({defaultsPath: "", examplePath: ""});
 
 
-const io = new Server({ cors: { allowedHeaders: "*" } });
+const io = new Server({cors: {allowedHeaders: "*"}});
 
-const polls = new Map<number,Poll>();
+const polls = new Map<number, Poll>();
 
 const chatHandlers: ChatHandler[] = [];
-const loginHandlers: LoginHandler[] =[];
+const loginHandlers: LoginHandler[] = [];
+
+let chatRelayActive = false;
 
 // load handlers (specific)
 
@@ -25,7 +27,7 @@ if (env["TWITCH_USER"] && env["TWITCH_TOKEN"]) {
     console.log("Twitch Loading...")
 }
 
-if (env["YOUTUBE_CLIENT_ID"]){
+if (env["YOUTUBE_CLIENT_ID"]) {
     const yt = new YouTube(env)
     chatHandlers.push(yt);
     loginHandlers.push(yt);
@@ -69,11 +71,17 @@ io.on("connection", (socket) => {
             chatHandlers.forEach((handler)=>handler.removeMessageHandler(poll.processChat))
         }
     })
-    socket.on("startChat",()=>{
-        chatHandlers.forEach((handler)=>handler.addMessageHandler(messageProcess))
+    socket.on("startChat",()=> {
+        if (!chatRelayActive) {
+            chatHandlers.forEach((handler) => handler.addMessageHandler(messageProcess))
+            chatRelayActive = true;
+        }
     })
-    socket.on("stopChat",()=>{
-        chatHandlers.forEach((handler)=>handler.removeMessageHandler(messageProcess))
+    socket.on("stopChat",()=> {
+        if (chatRelayActive) {
+            chatHandlers.forEach((handler) => handler.removeMessageHandler(messageProcess))
+            chatRelayActive = false;
+        }
     })
 });
 
