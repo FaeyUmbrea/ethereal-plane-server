@@ -54,13 +54,43 @@ export class YouTube implements ChatHandler, LoginHandler {
         throw new Error("No Live Chat Found with Video URL");
     }
 
+    async getLiveChatOfUser() {
+        const list = await this.liveBroadcastList({part: "snippet,status", mine: true})
+        if (!list) return;
+        if (list.items.length === 1) {
+            return list.items[0].snippet?.liveChatId;
+        }
+        if (list.items.length > 1) {
+            const filteredList = list.items.filter((item) => (item.status?.lifeCycleStatus != "completed" && item.status?.lifeCycleStatus != "revoked"))
+                .reduce((prev, cur) => {
+                    if (!prev) {
+                        return cur;
+                    }
+                    if (prev.snippet && cur.snippet) {
+                        const prevDate = new Date(prev.snippet.scheduledStartTime);
+                        const curDate = new Date(prev.snippet.scheduledEndTime);
+                        return prevDate < curDate ? prev : cur;
+                    }
+                    return prev;
+                })
+            return filteredList.snippet?.liveChatId;
+        }
+        throw new Error("There is no livestreams available");
+    }
+
     async connect(env: Record<string, string>): Promise<void> {
         if (!env["YOUTUBE_REFRESH_TOKEN"]) {
             console.log((await this.getAuthURL()));
         } else {
             await this.authenticate(env["YOUTUBE_REFRESH_TOKEN"])
-            const liveChatID = await this.getLivechatIDfromVideoID(env["YOUTUBE_VIDEO_ID"])
-            this.setLiveChatId(liveChatID);
+            if (env["YOUTUBE_VIDEO_ID"]) {
+                const liveChatID = await this.getLivechatIDfromVideoID(env["YOUTUBE_VIDEO_ID"])
+                this.setLiveChatId(liveChatID);
+            } else {
+                const liveChatID = await this.getLiveChatOfUser()
+                if (liveChatID)
+                    this.setLiveChatId(liveChatID);
+            }
             console.log("Youtube chat loaded!")
         }
     }
@@ -100,10 +130,16 @@ export class YouTube implements ChatHandler, LoginHandler {
                     const newText = text.replace(/^.*YOUTUBE_REFRESH_TOKEN=*$/mg, "") + `\nYOUTUBE_REFRESH_TOKEN=${this.getRefreshToken()}`;
                     Deno.writeTextFile("./.env", newText);
                 }
-                const liveChatID = await this.getLivechatIDfromVideoID(env["YOUTUBE_VIDEO_ID"])
-                this.setLiveChatId(liveChatID);
+                if (env["YOUTUBE_VIDEO_ID"]) {
+                    const liveChatID = await this.getLivechatIDfromVideoID(env["YOUTUBE_VIDEO_ID"])
+                    this.setLiveChatId(liveChatID);
+                } else {
+                    const liveChatID = await this.getLiveChatOfUser()
+                    if (liveChatID)
+                        this.setLiveChatId(liveChatID);
+                }
                 console.log("Youtube chat loaded!")
-                return new Response("You can now close this tab", { status: 200 });
+                return new Response("You can now close this tab", {status: 200});
             }
         }
     }
@@ -211,6 +247,21 @@ export class YouTube implements ChatHandler, LoginHandler {
         const res = await fetch(url, opt);
         if (res.ok) {
             return (await res.json()) as ChannelsList
+        }
+    }
+
+    async liveBroadcastList(query: liveBroadcastListQuery) {
+        const url = buildURL("liveBroadcasts", query);
+
+        const opt: RequestInit = {
+            headers: {
+                "Authorization": `Bearer ${this.accessToken}`
+            }
+        }
+
+        const res = await fetch(url, opt);
+        if (res.ok) {
+            return (await res.json()) as LiveBroadcastList
         }
     }
 
@@ -327,6 +378,54 @@ interface channelsListQuery extends query {
     maxResults?: number;
     onBehalfOfContentOwner?: string;
     pageToken?: string;
+}
+
+interface liveBroadcastListQuery extends query {
+    part: string;
+    broadcastStatus?: string;
+    id?: string;
+    mine?: boolean;
+    broadcastType?: string;
+    maxResults?: number;
+    onBehalfOfContentOwner?: string;
+    onBehalfOfContentOwnerChannel?: string;
+    pageToken?: string;
+}
+
+interface LiveBroadcastList {
+    kind: "youtube#liveBroadcastListResponse",
+    etag: string;
+    nextPageToken: string;
+    prevPageToken: string;
+    pageInfo: {
+        totalResults: number;
+        resultsPerPage: number;
+    };
+    items: LiveBroadcast[]
+}
+
+interface LiveBroadcast {
+    kind: "youtube#liveBroadcast";
+    etag: string;
+    id: string;
+    snippet?: {
+        publishedAt: string;
+        channelId: string;
+        title: string;
+        description: string;
+        scheduledStartTime: string;
+        scheduledEndTime: string;
+        actualStartTime: string;
+        actualEndTime: string;
+        isDefaultBroadcast: boolean;
+        liveChatId: string;
+    }
+    status?: {
+        lifeCycleStatus: string;
+    }
+    statistics?: {
+        totalChatCount: number;
+    }
 }
 
 interface VideoList {
